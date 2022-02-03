@@ -1,14 +1,8 @@
 import matplotlib.pyplot as plt
-import numpy as np
-import os
-import PIL
 import tensorflow as tf
-import glob
 import time
 
-from tensorflow import keras
 from tensorflow.keras import layers
-from tensorflow.keras.models import Sequential
 
 import SysproClassifyModel
 import pathlib
@@ -60,7 +54,7 @@ history = model.fit(
   epochs = EPOCHS
 )
 
-model.save_weights('./checkpoints/save')
+model.save_weights('./save')
 
 acc = history.history['accuracy']
 val_acc = history.history['val_accuracy']
@@ -84,46 +78,46 @@ plt.title('Training and Validation Loss')
 plt.show()
 
 
-model = SysproClassifyModel.create_model()
-model.load_weights('./checkpoints/save')
+# model = SysproClassifyModel.create_model()
+# model.load_weights('./checkpoints/save')
 
-image_list = []
-labels = np.zeros(200)
-predictions = np.zeros(200)
-labels[0:50] = 1
-labels[50:100] = 3
-labels[100:150] = 0
-labels[150:200] = 2
-i=0
+# image_list = []
+# labels = np.zeros(200)
+# predictions = np.zeros(200)
+# labels[0:50] = 1
+# labels[50:100] = 3
+# labels[100:150] = 0
+# labels[150:200] = 2
+# i=0
 
-for filename in glob.glob('./*.jpg'): #assuming png
+# for filename in glob.glob('./*.jpg'): #assuming png
 
-  img = tf.keras.utils.load_img(filename, target_size=(IMG_HEIGHT, IMG_WIDTH))
-  img_array = tf.keras.utils.img_to_array(img)
-  img_array = tf.expand_dims(img_array, 0) # Create a batch
+#   img = tf.keras.utils.load_img(filename, target_size=(IMG_HEIGHT, IMG_WIDTH))
+#   img_array = tf.keras.utils.img_to_array(img)
+#   img_array = tf.expand_dims(img_array, 0) # Create a batch
 
-  predict = model.predict(img_array)
-  score = tf.nn.softmax(predict[0])
-  predictions[i] = np.argmax(predict[0])
+#   predict = model.predict(img_array)
+#   score = tf.nn.softmax(predict[0])
+#   predictions[i] = np.argmax(predict[0])
 
-  #print("This image most likely belongs to {} with a {:.2f} percent confidence." .format(class_names[np.argmax(score)], 100 * np.max(score)))
+#   #print("This image most likely belongs to {} with a {:.2f} percent confidence." .format(class_names[np.argmax(score)], 100 * np.max(score)))
 
-  i = i + 1
+#   i = i + 1
 
-print(tf.math.confusion_matrix(
-    labels, predictions, num_classes=None, weights=None, dtype=tf.dtypes.int32,
-    name=None))
+# print(tf.math.confusion_matrix(
+#     labels, predictions, num_classes=None, weights=None, dtype=tf.dtypes.int32,
+#     name=None))
 
-now = time.time()
+# now = time.time()
 
-filename = './test/burger_meat_test_0.jpg' #assuming png
-img = tf.keras.utils.load_img(filename, target_size=(IMG_HEIGHT, IMG_WIDTH))
-img_array = tf.keras.utils.img_to_array(img)
-img_array = tf.expand_dims(img_array, 0) # Create a batch
-predict = model.predict(img_array)
-predictions = np.argmax(predict)
+# filename = './test/burger_meat_test_0.jpg' #assuming png
+# img = tf.keras.utils.load_img(filename, target_size=(IMG_HEIGHT, IMG_WIDTH))
+# img_array = tf.keras.utils.img_to_array(img)
+# img_array = tf.expand_dims(img_array, 0) # Create a batch
+# predict = model.predict(img_array)
+# predictions = np.argmax(predict)
 
-print(predictions)
-print(time.time() - now)
+# print(predictions)
+# print(time.time() - now)
 
 print('\n END \n')
