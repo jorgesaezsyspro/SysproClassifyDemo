@@ -4,6 +4,9 @@ The output will be send to a PLC to take some actions.
 Train images should be organized by class in a folder named accordantly.
 Test images doesn´t need to be organized.
 
+Test dataset:
+    https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz
+
 E.g.:
 
     ./imgs
@@ -19,3 +22,5 @@ E.g.:
             |- screw
             |- bolt
         |- test
+            |- test1.png
+            |- test2.png
