@@ -1,12 +1,11 @@
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import time
-
 from tensorflow.keras import layers
+
 import logging 
 import os
 
-import SysproClassifyModel
+import SysproClassifyModel as SCM
 import pathlib
 
 # This two lines are here just to silence Tensorflow output
@@ -17,11 +16,13 @@ logging.getLogger('tensorflow').setLevel(logging.FATAL)
 print('\nSTARTING \n')
 
 # Setting some CONSTANTS 
-BATCH_SIZE = 10
-IMG_HEIGHT = 256
-IMG_WIDTH = 256
+AUTO = tf.data.experimental.AUTOTUNE
+
+BATCH_SIZE = 20
+IMG_HEIGHT = 64
+IMG_WIDTH = 64
 NUM_CLASSES = 4
-EPOCHS = 10
+EPOCHS = 35
 
 # Setting training image directories
 data_dir = pathlib.Path('./imgs/train')
@@ -32,7 +33,7 @@ save_dir = pathlib.Path('./save/cp_classify')
 # Here we create the training image dataset
 train_ds = tf.keras.utils.image_dataset_from_directory(
   data_dir,
-  validation_split=0.3,
+  validation_split=0.5,
   subset="training",
   seed=42,
   image_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -41,7 +42,7 @@ train_ds = tf.keras.utils.image_dataset_from_directory(
 # And here the validation image dataset
 val_ds = tf.keras.utils.image_dataset_from_directory(
   data_dir,
-  validation_split=0.3,
+  validation_split=0.5,
   subset="validation",
   seed=42,
   image_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -50,13 +51,51 @@ val_ds = tf.keras.utils.image_dataset_from_directory(
 # Checking class names
 class_names = train_ds.class_names
 print(class_names)
-
 NUM_CLASSES = len(class_names)
+
+################################################################
+
+resize_and_rescale = tf.keras.Sequential([
+  layers.Resizing(IMG_HEIGHT, IMG_WIDTH),
+  layers.Rescaling(1./255)
+])
+
+def data_augmentation(img, brightness=0.8, contrast=0.8):
+  img = tf.image.random_brightness(img, brightness)
+  img = tf.image.random_contrast(img, 1-contrast, 1+2*contrast)
+
+  # flipping random horizontal 
+  if tf.random.uniform(()) > 0.5:
+    img = tf.image.flip_left_right(img)
+  # or vertical
+  if tf.random.uniform(()) > 0.5:
+    img = tf.image.flip_up_down(img)
+
+  return img
+
+
+def prepare(ds, augment=False):
+  # Resize and rescale all datasets.
+  ds = ds.map(lambda x, y: (resize_and_rescale(x), y), 
+              num_parallel_calls=AUTOTUNE)
+
+  # Batch all datasets.
+  # ds = ds.batch(BATCH_SIZE)
+
+  # Use data augmentation only on the training set.
+  if augment:
+    ds = ds.map(lambda x, y: (data_augmentation(x), y), 
+                num_parallel_calls=AUTOTUNE)
+
+  # Use buffered prefetching on all datasets.
+  return ds.prefetch(buffer_size=AUTOTUNE)
+
 
 # Cache image files
 AUTOTUNE = tf.data.AUTOTUNE
-train_ds = train_ds.cache().prefetch(buffer_size=AUTOTUNE)
-val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
+train_ds_prep = prepare(train_ds, augment=True)
+val_ds = prepare(val_ds)
+# test_ds = prepare(test_ds)
 
 # Get some sample images from the training dataset to take a look
 image_batch, labels_batch = next(iter(train_ds))
@@ -64,13 +103,16 @@ plt.figure(figsize=(10, 10))
 for images, labels in train_ds.take(1):
   for i in range(9):
     ax = plt.subplot(3, 3, i + 1)
-    plt.imshow(images[i].numpy().astype("uint8"))
+    img_to_show = images[i].numpy().astype("uint8")
+    img_to_show = data_augmentation(img_to_show)
+    plt.imshow(img_to_show)
     plt.title(class_names[labels[i]])
     plt.axis("off")
-plt.show(5)
+plt.draw()
+plt.waitforbuttonpress(3)
 
 # Create the model
-model = SysproClassifyModel.create_model(IMG_HEIGHT, IMG_WIDTH, NUM_CLASSES)
+model = SCM.classify_model(IMG_HEIGHT, IMG_WIDTH, NUM_CLASSES)
 
 # Take a look at the model structure
 model.summary()
@@ -80,7 +122,7 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=save_dir, save_weights
 
 # Fitting...
 history = model.fit(
-  train_ds,
+  train_ds_prep,
   validation_data=val_ds,
   epochs = EPOCHS,
   callbacks=[cp_callback]
