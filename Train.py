@@ -18,10 +18,9 @@ print('\nSTARTING \n')
 # Setting some CONSTANTS 
 AUTO = tf.data.experimental.AUTOTUNE
 
-BATCH_SIZE = 20
-IMG_HEIGHT = 64
-IMG_WIDTH = 64
-NUM_CLASSES = 4
+BATCH_SIZE = 15
+IMG_HEIGHT = 256
+IMG_WIDTH = 256
 EPOCHS = 35
 
 # Setting training image directories
@@ -55,61 +54,32 @@ NUM_CLASSES = len(class_names)
 
 ################################################################
 
-resize_and_rescale = tf.keras.Sequential([
-  layers.Resizing(IMG_HEIGHT, IMG_WIDTH),
-  layers.Rescaling(1./255)
-])
-
-def data_augmentation(img, brightness=0.8, contrast=0.8):
-  img = tf.image.random_brightness(img, brightness)
-  img = tf.image.random_contrast(img, 1-contrast, 1+2*contrast)
-
-  # flipping random horizontal 
-  if tf.random.uniform(()) > 0.5:
-    img = tf.image.flip_left_right(img)
-  # or vertical
-  if tf.random.uniform(()) > 0.5:
-    img = tf.image.flip_up_down(img)
-
-  return img
-
-
-def prepare(ds, augment=False):
-  # Resize and rescale all datasets.
-  ds = ds.map(lambda x, y: (resize_and_rescale(x), y), 
-              num_parallel_calls=AUTOTUNE)
-
-  # Batch all datasets.
-  # ds = ds.batch(BATCH_SIZE)
-
-  # Use data augmentation only on the training set.
-  if augment:
-    ds = ds.map(lambda x, y: (data_augmentation(x), y), 
-                num_parallel_calls=AUTOTUNE)
-
-  # Use buffered prefetching on all datasets.
-  return ds.prefetch(buffer_size=AUTOTUNE)
-
+augment_param={
+  "img_height"  : IMG_HEIGHT,
+  "img_width"   : IMG_WIDTH,
+  "contrast"    : 0.2,
+  "brightness"  : 0.2,
+  "Hflip"       : True, 
+  "Vflip"       : True
+  }
 
 # Cache image files
-AUTOTUNE = tf.data.AUTOTUNE
-train_ds_prep = prepare(train_ds, augment=True)
-val_ds = prepare(val_ds)
-# test_ds = prepare(test_ds)
+train_ds = SCM.prepare(train_ds, augment=True, augment_param=augment_param)
+val_ds = SCM.prepare(val_ds)
+# test_ds = SCM.prepare(test_ds)
 
 # Get some sample images from the training dataset to take a look
-image_batch, labels_batch = next(iter(train_ds))
 plt.figure(figsize=(10, 10))
-for images, labels in train_ds.take(1):
-  for i in range(9):
-    ax = plt.subplot(3, 3, i + 1)
-    img_to_show = images[i].numpy().astype("uint8")
-    img_to_show = data_augmentation(img_to_show)
-    plt.imshow(img_to_show)
-    plt.title(class_names[labels[i]])
-    plt.axis("off")
-plt.draw()
-plt.waitforbuttonpress(3)
+images, labels = next(iter(train_ds))
+for i in range(9):
+  ax = plt.subplot(3, 3, i + 1)
+  img_to_show = images[i].numpy()
+  img_to_show = img_to_show * 255.
+  img_to_show = img_to_show.astype("uint8")
+  plt.imshow(img_to_show)
+  plt.title(class_names[labels[i]])
+  plt.axis("off")
+plt.show()
 
 # Create the model
 model = SCM.classify_model(IMG_HEIGHT, IMG_WIDTH, NUM_CLASSES)
@@ -122,7 +92,7 @@ cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=save_dir, save_weights
 
 # Fitting...
 history = model.fit(
-  train_ds_prep,
+  train_ds,
   validation_data=val_ds,
   epochs = EPOCHS,
   callbacks=[cp_callback]
