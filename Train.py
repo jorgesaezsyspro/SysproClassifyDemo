@@ -8,6 +8,12 @@ import os
 import SysproClassifyModel as SCM
 import pathlib
 
+import json
+import datetime
+
+import keras_tuner as kt
+
+
 # This two lines are here just to silence Tensorflow output
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # FATAL
 logging.getLogger('tensorflow').setLevel(logging.FATAL)
@@ -18,21 +24,23 @@ print('\nSTARTING \n')
 # Setting some CONSTANTS 
 AUTO = tf.data.experimental.AUTOTUNE
 
-BATCH_SIZE = 15
+BATCH_SIZE = 5
 IMG_HEIGHT = 256
-IMG_WIDTH = 256
-EPOCHS = 35
+IMG_WIDTH = IMG_HEIGHT
+EPOCHS = 15
 
 # Setting training image directories
-data_dir = pathlib.Path('./imgs/train')
+data_dir = pathlib.Path('./imgs_meat/train')
 image_count = len(list(data_dir.glob('*/*.jpg')))
-# And save directorie
-save_dir = pathlib.Path('./save/cp_classify')
+
+# And save directories
+save_dir = pathlib.Path('./save/cp_classify.h5')
+json_dir = pathlib.Path('./save/data.json')
 
 # Here we create the training image dataset
 train_ds = tf.keras.utils.image_dataset_from_directory(
   data_dir,
-  validation_split=0.5,
+  validation_split=0.3,
   subset="training",
   seed=42,
   image_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -41,7 +49,7 @@ train_ds = tf.keras.utils.image_dataset_from_directory(
 # And here the validation image dataset
 val_ds = tf.keras.utils.image_dataset_from_directory(
   data_dir,
-  validation_split=0.5,
+  validation_split=0.3,
   subset="validation",
   seed=42,
   image_size=(IMG_HEIGHT, IMG_WIDTH),
@@ -52,57 +60,66 @@ class_names = train_ds.class_names
 print(class_names)
 NUM_CLASSES = len(class_names)
 
-################################################################
+# Arguments for the image augmentation function
+augment_params = {
+    "img_height": IMG_HEIGHT,
+    "img_width": IMG_WIDTH,
+    "contrast": 0.15,
+    "brightness": 0.15,
+    "Hflip": True,
+    "Vflip": True,
+    "rotate": 30,
+    "zoom": 0.9,
+    "gauss": 15.0
+}
 
-augment_param={
-  "img_height"  : IMG_HEIGHT,
-  "img_width"   : IMG_WIDTH,
-  "contrast"    : 0.2,
-  "brightness"  : 0.2,
-  "Hflip"       : True, 
-  "Vflip"       : True
-  }
-
-# Cache image files
-train_ds = SCM.prepare(train_ds, augment=True, augment_param=augment_param)
-val_ds = SCM.prepare(val_ds)
-# test_ds = SCM.prepare(test_ds)
+# Prepare image files
+train_ds = SCM.prepare(train_ds, augment=True, params=augment_params)
+val_ds = SCM.prepare(val_ds, params=augment_params)
 
 # Get some sample images from the training dataset to take a look
-plt.figure(figsize=(10, 10))
 images, labels = next(iter(train_ds))
-for i in range(9):
-  ax = plt.subplot(3, 3, i + 1)
-  img_to_show = images[i].numpy()
-  img_to_show = img_to_show * 255.
-  img_to_show = img_to_show.astype("uint8")
-  plt.imshow(img_to_show)
-  plt.title(class_names[labels[i]])
-  plt.axis("off")
-plt.show()
+SCM.show_samples(images, labels, class_names, BATCH_SIZE)
 
 # Create the model
-model = SCM.classify_model(IMG_HEIGHT, IMG_WIDTH, NUM_CLASSES)
+hp=kt.HyperParameters()
+my_hyper_model = SCM.MyHyperModel(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, num_classes=NUM_CLASSES)
+tuner = kt.BayesianOptimization(my_hyper_model,
+                                objective='val_accuracy',
+                                max_trials=10,
+                                directory='trials',
+                                project_name='classify',
+                                overwrite=True)
+
+stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+tuner.search(train_ds,
+             validation_data=val_ds,
+             epochs=EPOCHS,
+             callbacks=[stop_early])
+best_hps=tuner.get_best_hyperparameters(num_trials=1)[0]
+model = tuner.hypermodel.build(best_hps)
 
 # Take a look at the model structure
-model.summary()
+# model.summary()
 
 # Define some callbacks
-cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=save_dir, save_weights_only=True, verbose=1)
+# cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=save_dir, save_weights_only=True, verbose=1)
 
 # Fitting...
-history = model.fit(
-  train_ds,
-  validation_data=val_ds,
-  epochs = EPOCHS,
-  callbacks=[cp_callback]
-)
+history = model.fit(train_ds,
+                    validation_data=val_ds,
+                    epochs=EPOCHS,
+                    callbacks=[]
+                    )
 
+# Save the model
+model.save(filepath=save_dir, overwrite=True)
+
+# Show training data
 acc = history.history['accuracy']
 val_acc = history.history['val_accuracy']
 loss = history.history['loss']
 val_loss = history.history['val_loss']
-
 epochs_range = range(EPOCHS)
 
 plt.figure(figsize=(8, 8))
@@ -119,47 +136,16 @@ plt.legend(loc='upper right')
 plt.title('Training and Validation Loss')
 plt.show()
 
-
-# model = SysproClassifyModel.create_model()
-# model.load_weights('./checkpoints/save')
-
-# image_list = []
-# labels = np.zeros(200)
-# predictions = np.zeros(200)
-# labels[0:50] = 1
-# labels[50:100] = 3
-# labels[100:150] = 0
-# labels[150:200] = 2
-# i=0
-
-# for filename in glob.glob('./*.jpg'): #assuming png
-
-#   img = tf.keras.utils.load_img(filename, target_size=(IMG_HEIGHT, IMG_WIDTH))
-#   img_array = tf.keras.utils.img_to_array(img)
-#   img_array = tf.expand_dims(img_array, 0) # Create a batch
-
-#   predict = model.predict(img_array)
-#   score = tf.nn.softmax(predict[0])
-#   predictions[i] = np.argmax(predict[0])
-
-#   #print("This image most likely belongs to {} with a {:.2f} percent confidence." .format(class_names[np.argmax(score)], 100 * np.max(score)))
-
-#   i = i + 1
-
-# print(tf.math.confusion_matrix(
-#     labels, predictions, num_classes=None, weights=None, dtype=tf.dtypes.int32,
-#     name=None))
-
-# now = time.time()
-
-# filename = './test/burger_meat_test_0.jpg' #assuming png
-# img = tf.keras.utils.load_img(filename, target_size=(IMG_HEIGHT, IMG_WIDTH))
-# img_array = tf.keras.utils.img_to_array(img)
-# img_array = tf.expand_dims(img_array, 0) # Create a batch
-# predict = model.predict(img_array)
-# predictions = np.argmax(predict)
-
-# print(predictions)
-# print(time.time() - now)
+# Save some data for the Test part
+data = {
+  "training_date" : str(datetime.datetime.now()),
+  "save_path"     : save_dir,
+  "classes"       : class_names,
+  "img_height"    : IMG_HEIGHT,
+  "img_width"     : IMG_WIDTH,
+  "augment_params": augment_params
+}
+with open(json_dir, 'w') as f:
+    json.dump(data, f)
 
 print('\n END \n')

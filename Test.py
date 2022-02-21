@@ -16,7 +16,7 @@ json_dir = pathlib.Path('./save/data.json')
 with open(json_dir) as json_file:
     data = json.load(json_file)
 
-save_dir = pathlib.Path('./save/cp_classify.h5')
+save_dir = data["save_path"]
 
 print('\nSTARTING \n')
 print("Network trained on {}".format(data["training_date"]))
@@ -27,35 +27,40 @@ class_names = data["classes"]
 print(class_names)
 NUM_CLASSES = len(class_names)
 
-# Load model
 model = tf.keras.models.load_model(save_dir)
-# TODO Check that loaded model is ok
 
-# TODO Connect to camera
-# TODO Check
+image_list = []
+labels = np.zeros(200)
+predictions = np.zeros(200)
+labels[0:50] = 1
+labels[50:100] = 3
+labels[100:150] = 0
+labels[150:200] = 2
+i = 0
 
-# TODO Connect to PLC
-# TODO Check
+for filename in glob.glob('./imgs_meat/test/*.jpg'):
 
-# Loop until close:
-while(True):
-    # TODO Wait for trigger input
-    # TODO Trigger camera
-
-    # TODO Load img to model
-    image = []
-    # Predict
-    img = tf.keras.utils.load_img(image, target_size=(IMG_HEIGHT, IMG_WIDTH))
+    img = tf.keras.utils.load_img(filename, target_size=(IMG_HEIGHT, IMG_WIDTH))
     img_array = tf.keras.utils.img_to_array(img) / 255.
     img_array = tf.expand_dims(img_array, 0)  # Create a batch
-    # Get results
+
     start_time = time.time()
     predict = model.predict(img_array)
     execution_time = time.time() - start_time
 
-    score = np.max(tf.nn.softmax(predict[0])) * 100
-    prediction = class_names[np.argmax(score)]
+    score = tf.nn.softmax(predict[0])
+    predictions[i] = np.argmax(predict[0])
 
-    # TODO Make a decision
+    print("The image N {} most likely belongs to {} with a {:.2f} percent confidence. It took {:.0f} miliseconds to predict"
+          .format(i,
+                  class_names[np.argmax(score)],
+                  100 * np.max(score),
+                  1000 * execution_time
+                  ), end="\r", flush=True
+          )
 
-    break
+    i = i + 1
+
+print(tf.math.confusion_matrix(
+    labels, predictions, num_classes=None, weights=None, dtype=tf.dtypes.int32,
+    name=None))

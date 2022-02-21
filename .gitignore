@@ -1,6 +1,8 @@
 .vscode/
-imgs/
+imgs_flowers/
+imgs_meat/
 save/
+trials/
 __pycache__/
 __pycache__/SysproClassifyModel.cpython-39.pyc
 __pycache__/Train.cpython-39.pyc
